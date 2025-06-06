@@ -1,17 +1,22 @@
+# Copyright 2025 plumiume.com
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import overload, Literal, Iterable, Generator
 import torch
 from torch import Tensor
 
 from .utils import batch_check, batch_product
-
-# for copilot
-# GoogleスタイルのdocstringをpublicAPIに付与
-# 項目: (改行) プレースホルダー: (`型`)
-# 型が `Tensor` の場合は ":" の直後に形状を記載
-# 例外をスローする前の日本語のコメントをもとに英語のメッセージを作成
-
-# これらのctc_decodeのオーバーロードは、torch.unique_consecutiveの
-# `return_inverse`, `return_counts`をサポートする
 
 def _inverse(inverse_iter: Iterable[Tensor]) -> Tensor:
     return torch.stack(list(inverse_iter))
