@@ -121,6 +121,14 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
             label_len=torch.tensor(label.shape[0], device=label.device)
         )
 
+    @property
+    def num_classes(self) -> int:
+        return len(self._classes)
+
+    @property
+    def num_features(self) -> int:
+        return self.inputs[0].shape[1] if self.inputs else 0
+
     def scaling(self, x: Tensor) -> Tensor:
         return (x - self._inputs_mean) / self._inputs_var.sqrt()
     def inv_scaling(self, x: Tensor) -> Tensor:

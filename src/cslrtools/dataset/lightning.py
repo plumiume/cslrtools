@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Literal, TypedDict
-import torch
-from .pytorch import Dataset, DataTuple
 try:
     import lightning.pytorch
 except ImportError:
@@ -23,9 +20,13 @@ except ImportError:
         "Please install it with 'pip install .[lightning]'"
     )
 
+from typing import Literal, TypedDict, Generic
+import torch
+from .pytorch import Dataset, _M
+
 StageString = Literal['train', 'val', 'test', 'predict']
 
-class LightningDataModule(lightning.pytorch.LightningDataModule):
+class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
 
     class DataLoaderCommonKwargs(TypedDict, total=False):
         batch_size: int
@@ -44,7 +45,7 @@ class LightningDataModule(lightning.pytorch.LightningDataModule):
 
     def __init__(
         self,
-        dataset: Dataset,
+        dataset: Dataset[_M],
         stages: list[list[StageString]],
         common_kwargs: DataLoaderCommonKwargs = {}
         ):
