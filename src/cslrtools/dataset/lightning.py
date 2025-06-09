@@ -68,9 +68,11 @@ class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
     def setup(self, stage: StageString | str | None = None):
         match stage:
             case 'fit':
-                indices = [i for i, s in enumerate(self.stages) if 'fit' in s]
-                self._train_dataset = torch.utils.data.Subset(self.dataset, indices)
-            case 'val':
+                train_indices = [i for i, s in enumerate(self.stages) if 'fit' in s]
+                self._fit_dataset = torch.utils.data.Subset(self.dataset, train_indices)
+                val_indices = [i for i, s in enumerate(self.stages) if 'val' in s]
+                self._val_dataset = torch.utils.data.Subset(self.dataset, val_indices)
+            case 'validate':
                 indices = [i for i, s in enumerate(self.stages) if 'val' in s]
                 self._val_dataset = torch.utils.data.Subset(self.dataset, indices)
             case 'test':
@@ -83,24 +85,28 @@ class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
                 pass
 
     def train_dataloader(self):
+        # fit
         return torch.utils.data.DataLoader(
-            self._train_dataset,
+            self._fit_dataset,
             **self.common_kwargs, **self.train_kwargs
         )
 
     def val_dataloader(self):
+        # fit and validate
         return torch.utils.data.DataLoader(
             self._val_dataset,
             **self.common_kwargs, **self.val_kwargs
         )
 
     def test_dataloader(self):
+        # test
         return torch.utils.data.DataLoader(
             self._test_dataset,
             **self.common_kwargs, **self.test_kwargs
         )
 
     def predict_dataloader(self):
+        # predict
         return torch.utils.data.DataLoader(
             self._predict_dataset,
             **self.common_kwargs, **self.predict_kwargs
