@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import SupportsIndex, NamedTuple
+from typing import (
+    SupportsIndex, NamedTuple, TypedDict,
+    TypeVar, Generic
+)
 from itertools import chain
 import torch
 from torch import Tensor
@@ -23,20 +26,25 @@ class DataTuple(NamedTuple):
     label: Tensor # (N?, S)
     label_len: Tensor # (N?,)
 
-class Dataset(torch.utils.data.Dataset[DataTuple]):
+class Metadata(TypedDict, total=False): ...
+
+_M = TypeVar('_M', bound=Metadata)
+
+class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
 
     def __init__(
         self,
-        inputs: Tensor,
+        inputs: list[Tensor],
         input_maxlen: int,
-        labels: Tensor,
+        labels: list[Tensor],
         label_maxlen: int,
         blank_label: str,
         blank_idx: int,
         inputs_mean: Tensor,
         inputs_var: Tensor,
         classes: dict[str, int],
-        classes_inv: dict[int, str]
+        classes_inv: dict[int, str],
+        metas: list[_M] = []
         ):
 
         self.inputs = inputs
@@ -49,33 +57,35 @@ class Dataset(torch.utils.data.Dataset[DataTuple]):
         self._inputs_var = inputs_var
         self._classes = classes
         self._classes_inv = classes_inv
+        self._metas = metas
 
     @classmethod
     def from_sequences(
         cls,
         inputs: list[Tensor],  # list of (T, D)
         labels: list[list[str]],  # list of label sequences (S,)
-        blank_label: str = ' '
+        blank_label: str = ' ',
+        metas: list[_M] = []
     ) -> 'Dataset':
         catted_inputs = torch.cat(inputs)
         inputs_mean = catted_inputs.mean(0)
         inputs_var = catted_inputs.var(0)
 
-        labels_set = set(chain.from_iterable(labels))
+        labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
         classes_inv = dict(enumerate(ordered_labels))
         classes = {v: k for k, v in classes_inv.items()}
         blank_idx = classes[blank_label]
 
-        inputs_tensor = torch.stack([
+        inputs_tensor = [
             (x - inputs_mean) / inputs_var.sqrt() for x in inputs
-        ])
+        ]
         input_maxlen = max((len(x) for x in inputs), default=0)
 
-        labels_tensor = torch.stack([
+        labels_tensor = [
             torch.tensor([classes[l] for l in label_seq], device=catted_inputs.device)
             for label_seq in labels
-        ])
+        ]
         label_maxlen = max((len(y) for y in labels), default=0)
 
         return cls(
@@ -88,7 +98,8 @@ class Dataset(torch.utils.data.Dataset[DataTuple]):
             inputs_mean=inputs_mean,
             inputs_var=inputs_var,
             classes=classes,
-            classes_inv=classes_inv
+            classes_inv=classes_inv,
+            metas=metas
         )
 
     def __len__(self) -> int:
@@ -109,3 +120,12 @@ class Dataset(torch.utils.data.Dataset[DataTuple]):
             ),
             label_len=torch.tensor(label.shape[0], device=label.device)
         )
+
+    def scaling(self, x: Tensor) -> Tensor:
+        return (x - self._inputs_mean) / self._inputs_var.sqrt()
+    def inv_scaling(self, x: Tensor) -> Tensor:
+        return x * self._inputs_var.sqrt() + self._inputs_mean
+    def label_to_idx(self, label: str) -> int:
+        return self._classes[label]
+    def inv_label_to_idx(self, idx: int) -> str:
+        return self._classes_inv[idx]

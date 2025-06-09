@@ -34,19 +34,21 @@ Each module can be imported from the `cslrtools` package.
 
 Example:
 ```python
+import torch.nn as nn
 from cslrtools import attn_mask, convsize, ctc_decode, word_error_rate
 
 # Generate attention mask
-mask = attn_mask.create_mask(...)
+mask = attn_mask.attn_mask(...)
 
 # Compute convolution output size
-size = convsize.compute_conv_output_size(...)
+conv2d = nn.Conv2d(...)
+size = convsize.ConvSize(conv2d)
 
 # CTC decoding
-decoded = ctc_decode.greedy_decode(...)
+decoded = ctc_decode.ctc_decode(...)
 
 # Calculate word error rate
-wer = word_error_rate.calculate_wer(...)
+wer = word_error_rate.wer(...)
 ```
 
 For detailed usage of each function, please refer to the docstrings in the source code.
