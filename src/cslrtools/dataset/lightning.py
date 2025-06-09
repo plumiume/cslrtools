@@ -24,7 +24,7 @@ from typing import Literal, TypedDict, Generic
 import torch
 from .pytorch import Dataset, _M
 
-StageString = Literal['train', 'val', 'test', 'predict']
+StageString = Literal['fit', 'val', 'test', 'predict']
 
 class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
 
@@ -67,8 +67,8 @@ class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
 
     def setup(self, stage: StageString | str | None = None):
         match stage:
-            case 'train':
-                indices = [i for i, s in enumerate(self.stages) if 'train' in s]
+            case 'fit':
+                indices = [i for i, s in enumerate(self.stages) if 'fit' in s]
                 self._train_dataset = torch.utils.data.Subset(self.dataset, indices)
             case 'val':
                 indices = [i for i, s in enumerate(self.stages) if 'val' in s]
