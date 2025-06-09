@@ -110,12 +110,12 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         label = self.labels[idx]
         return DataTuple(
             input=torch.nn.functional.pad(
-                input, (0, self.input_maxlen - input.shape[0], 0, 0),
+                input, (0, self.input_maxlen - input.shape[-2], 0, 0),
                 value=0
             ),
             input_len=torch.tensor(input.shape[0], device=input.device),
             label=torch.nn.functional.pad(
-                label, (0, self.label_maxlen - label.shape[0]),
+                label, (0, self.label_maxlen - label.shape[-1]),
                 value=self._blank_idx
             ),
             label_len=torch.tensor(label.shape[0], device=label.device)
