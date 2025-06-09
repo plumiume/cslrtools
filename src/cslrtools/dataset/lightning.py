@@ -43,11 +43,18 @@ class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
     test_kwargs = val_kwargs
     predict_kwargs = val_kwargs
 
+    @property
+    def batch_size(self) -> int | None:
+        return self.common_kwargs.get('batch_size', None)
+    @batch_size.setter
+    def batch_size(self, value: int):
+        self.common_kwargs['batch_size'] = value
+
     def __init__(
         self,
         dataset: Dataset[_M],
         stages: list[list[StageString]],
-        common_kwargs: DataLoaderCommonKwargs = {}
+        common_kwargs: DataLoaderCommonKwargs = DataLoaderCommonKwargs({})
         ):
         super().__init__()
         if len(dataset) != len(stages):
