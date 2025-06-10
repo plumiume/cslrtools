@@ -67,13 +67,23 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         blank_label: str = ' ',
         metas: list[_M] = []
     ) -> 'Dataset':
-        catted_inputs = torch.cat(inputs)
-        inputs_mean = torch.stack([
-            di[~di.isnan() & ~di.isinf()].mean() for di in catted_inputs.unbind(-1)
-        ], dim=-1)
-        inputs_var = torch.stack([
-            di[~di.isnan() & ~di.isinf()].var() for di in catted_inputs.unbind(-1)
-        ], dim=-1)
+        if not inputs:
+            raise ValueError("Input list cannot be empty.")
+        sample_valid_cnts = torch.stack([
+            torch.tensor([
+                len(di) for di in xi.unbind(-1)
+            ])
+            for xi in inputs
+        ])
+        sample_means = torch.stack([
+            xi[~xi.isnan() & ~xi.isinf()].mean(-1) for xi in inputs
+        ])
+        sample_vars = torch.stack([
+            xi[~xi.isnan() & ~xi.isinf()].var(-1) for xi in inputs
+        ])
+        sample_valid_cnts_sum = sample_valid_cnts.sum(0)
+        inputs_mean = (sample_means * sample_valid_cnts).sum(0) / sample_valid_cnts_sum
+        inputs_var = (sample_vars * sample_valid_cnts).sum(0) / sample_valid_cnts_sum
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
@@ -87,7 +97,7 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         input_maxlen = max((len(x) for x in inputs), default=0)
 
         labels_tensor = [
-            torch.tensor([classes[l] for l in label_seq], device=catted_inputs.device)
+            torch.tensor([classes[l] for l in label_seq])
             for label_seq in labels
         ]
         label_maxlen = max((len(y) for y in labels), default=0)
