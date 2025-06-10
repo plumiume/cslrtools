@@ -77,14 +77,14 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         ])
         sample_means = torch.stack([
             torch.stack([
-                di[~di.isnan() & ~di.isinf()].mean(-1)
+                di[~di.isnan() & ~di.isinf()].mean()
                 for di in xi.unbind(-1)
             ])
             for xi in inputs
         ])
         sample_vars = torch.stack([
             torch.stack([
-                di[~di.isnan() & ~di.isinf()].var(-1)
+                di[~di.isnan() & ~di.isinf()].var()
                 for di in xi.unbind(-1)
             ])
             for xi in inputs
