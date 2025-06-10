@@ -72,6 +72,10 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         sample_mean = torch.stack([xi.nanmean(0) for xi in inputs])
         sample_var = torch.stack([(xi - mi).pow(2).nanmean(0) for xi, mi in zip(inputs, sample_mean)])
 
+        print(f"Sample lengths: {sample_len}")
+        print(f"Sample means: {sample_mean}")
+        print(f"Sample variances: {sample_var}")
+
         sample_len_sum = sample_len.sum(0)
         inputs_mean = (sample_mean * sample_len).sum(0) / sample_len_sum
         inputs_var = (sample_var * sample_len).sum(0) / sample_len_sum
