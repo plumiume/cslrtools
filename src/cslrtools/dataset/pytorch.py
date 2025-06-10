@@ -67,22 +67,15 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         blank_label: str = ' ',
         metas: list[_M] = []
     ) -> 'Dataset':
-        if not inputs:
-            raise ValueError("Input list cannot be empty.")
-        samples = [
-            [
-                di[~di.isnan() & ~di.isinf()]
-                for di in xi
-            ]
-            for xi in inputs
-        ]
-        sample_counts = torch.tensor([[di.shape[0] for di in xi] for xi in samples])
-        sample_means = torch.tensor([[di.mean() for di in xi] for xi in samples]) * sample_counts
-        sample_vars = torch.tensor([[di.var() for di in xi] for xi in samples]) * sample_counts
 
-        inputs_counts = sample_counts.sum(0)
-        inputs_mean = sample_means / sample_counts
-        inputs_var = sample_vars / sample_counts
+        dims = (torch.cat([inputs[xi][di] for di in range(xi.shape[-1])]) for xi in inputs)
+        valids = (di[~di.isnan() & ~di.isinf()] for di in dims)
+        cnt, mean, var = torch.stack([
+            torch.tensor([len(di), di.mean(), di.var()]) for di in valids
+        ]).unbind(-1)
+        cnt_sum = cnt.sum(0)
+        inputs_mean = (mean * cnt).sum() / cnt_sum
+        inputs_var = (var * cnt).sum() / cnt_sum
         
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
