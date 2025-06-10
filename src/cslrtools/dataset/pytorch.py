@@ -69,24 +69,27 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
     ) -> 'Dataset':
 
         sample_lens = list[Tensor]()
-        sample_means = list[Tensor]()
-        sample_vars = list[Tensor]()
+        inputs_mean = list[Tensor]()
+        inputs_var = list[Tensor]()
 
         for xi in inputs:
             xi = xi.nan_to_num(posinf=float('nan'), neginf=float('nan'))
             
-            xi_len = xi.isnan().logical_not().sum(0)
+            xi_len = (~xi.isnan()).sum(0)
             xi_mean = xi.nanmean(0)
-            xi_var = (xi - xi_mean).pow(2).nanmean(0)
+            xi_var = ((xi - xi_mean) ** 2).nanmean(0)
 
             sample_lens.append(xi_len)
-            sample_means.append(xi_mean)
-            sample_vars.append(xi_var)
+            inputs_mean.append(xi_mean)
+            inputs_var.append(xi_var)
 
-        sample_lens = torch.stack(sample_lens) # (N, D)
-        sample_lens_sum = sample_lens.sum(0) # (D,)
-        inputs_mean = (torch.stack(sample_means) * sample_lens).nansum(0) / sample_lens_sum
-        inputs_var = (torch.stack(sample_vars) * sample_lens).nansum(0) / sample_lens_sum
+        sample_lens = torch.stack(sample_lens)
+        inputs_mean = torch.stack(inputs_mean)
+        inputs_var = torch.stack(inputs_var)
+
+        sample_lens_sum = sample_lens.sum(0)
+        inputs_mean = (inputs_mean * sample_lens).nansum(0) / sample_lens_sum
+        inputs_var = (inputs_var * sample_lens).nansum(0) / sample_lens_sum
 
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
