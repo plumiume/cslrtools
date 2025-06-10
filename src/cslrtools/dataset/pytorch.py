@@ -69,30 +69,21 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
     ) -> 'Dataset':
         if not inputs:
             raise ValueError("Input list cannot be empty.")
-        sample_valid_cnts = torch.stack([
-            torch.tensor([
-                len(di) for di in xi.unbind(-1)
-            ])
+        samples = [
+            [
+                di[~di.isnan() & ~di.isinf()]
+                for di in xi
+            ]
             for xi in inputs
-        ])
-        sample_means = torch.stack([
-            torch.stack([
-                di[~di.isnan() & ~di.isinf()].mean()
-                for di in xi.unbind(-1)
-            ])
-            for xi in inputs
-        ])
-        sample_vars = torch.stack([
-            torch.stack([
-                di[~di.isnan() & ~di.isinf()].var()
-                for di in xi.unbind(-1)
-            ])
-            for xi in inputs
-        ])
-        sample_valid_cnts_sum = sample_valid_cnts.sum(0)
-        inputs_mean = (sample_means * sample_valid_cnts).sum(0) / sample_valid_cnts_sum
-        inputs_var = (sample_vars * sample_valid_cnts).sum(0) / sample_valid_cnts_sum
+        ]
+        sample_counts = torch.tensor([[di.shape[0] for di in xi] for xi in samples])
+        sample_means = torch.tensor([[di.mean() for di in xi] for xi in samples]) * sample_counts
+        sample_vars = torch.tensor([[di.var() for di in xi] for xi in samples]) * sample_counts
 
+        inputs_counts = sample_counts.sum(0)
+        inputs_mean = sample_means / sample_counts
+        inputs_var = sample_vars / sample_counts
+        
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
         classes_inv = dict(enumerate(ordered_labels))
