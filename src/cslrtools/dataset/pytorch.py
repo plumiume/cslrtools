@@ -68,7 +68,8 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         metas: list[_M] = []
     ) -> 'Dataset':
 
-        print([(xi.isnan() | xi.isinf()).sum() for xi in inputs])
+        print([xi.isnan().sum() for xi in inputs])
+        print([xi.isinf().sum() for xi in inputs])
 
         sample_len = torch.stack([xi.isnan().logical_not().sum(0) for xi in inputs])
         sample_mean = torch.stack([xi.nanmean(0) for xi in inputs])
