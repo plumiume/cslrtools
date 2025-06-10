@@ -74,9 +74,9 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
 
         sample_len_sum = sample_len.sum(0)
 
-        test = (sample_mean.isinf() | sample_mean.isnan()).sum(-1)
-        print(test)
-        print(test.sum())
+        mean_isnan = sample_mean.isnan()
+        var_isnan = sample_var.isnan()
+        print(mean_isnan.sum(), var_isnan.sum())
 
         mean_mul_len = sample_mean / sample_len_sum * sample_len
         var_mul_len = sample_var / sample_len_sum * sample_len
