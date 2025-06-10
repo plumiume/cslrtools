@@ -76,8 +76,7 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         inputs_mean = (sample_mean * sample_len).sum(0) / sample_len_sum
         inputs_var = (sample_var * sample_len).sum(0) / sample_len_sum
 
-        print(sample_mean)
-        print(sample_mean * sample_len)
+        print((sample_mean * sample_len).isnan().any())
         print((sample_mean * sample_len).sum(0))
         
 
