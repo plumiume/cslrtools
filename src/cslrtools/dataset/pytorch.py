@@ -68,20 +68,13 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         metas: list[_M] = []
     ) -> 'Dataset':
 
-        valids = [[di[~di.isnan() & ~di.isinf()] for di in xi.unbind(-1)] for xi in inputs]
-        sample_len = torch.stack([torch.tensor([
-            di.shape[0] for di in xi
-        ]) for xi in valids])
-        sample_mean = torch.stack([torch.stack([
-            di.mean() for di in xi
-        ]) for xi in valids])
-        sample_var = torch.stack([torch.stack([
-            di.var(unbiased=False) for di in xi
-        ]) for xi in valids])
+        sample_len = torch.stack([xi.isnan().logical_not().sum(0) for xi in inputs])
+        sample_mean = torch.stack([xi.nanmean(0) for xi in inputs])
+        sample_var = torch.stack([(xi - sample_mean).pow(2).nanmean(0) for xi in inputs])
 
-        sample_len_sum = sample_len.sum()
-        inputs_mean = (sample_mean * sample_len).sum() / sample_len_sum
-        inputs_var = (sample_var * sample_len).sum() / sample_len_sum
+        sample_len_sum = sample_len.sum(0)
+        inputs_mean = (sample_mean * sample_len).sum(0) / sample_len_sum
+        inputs_var = (sample_var * sample_len).sum(0) / sample_len_sum
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
