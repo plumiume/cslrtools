@@ -85,8 +85,8 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
 
         sample_lens = torch.stack(sample_lens) # (N, D)
         sample_lens_sum = sample_lens.sum(0) # (D,)
-        inputs_mean = (torch.stack(sample_means) * sample_lens).nansum() / sample_lens_sum
-        inputs_var = (torch.stack(sample_vars) * sample_lens).nansum() / sample_lens_sum
+        inputs_mean = (torch.stack(sample_means) * sample_lens).nansum(0) / sample_lens_sum
+        inputs_var = (torch.stack(sample_vars) * sample_lens).nansum(0) / sample_lens_sum
 
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
