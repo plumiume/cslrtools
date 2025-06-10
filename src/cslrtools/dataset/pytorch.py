@@ -68,8 +68,13 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         metas: list[_M] = []
     ) -> 'Dataset':
         catted_inputs = torch.cat(inputs)
-        inputs_mean = catted_inputs.nanmean(0)
-        inputs_var = (catted_inputs - inputs_mean).pow(2).nanmean(0)
+        unbind_inputs = (di[~di.isnan() & ~di.isinf()] for di in catted_inputs.unbind(dim=-1))
+        inputs_mean = torch.stack([
+            di.mean() for di in unbind_inputs
+        ], dim=-1)
+        inputs_var = torch.stack([
+            di.var() for di in unbind_inputs
+        ], dim=-1)
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
