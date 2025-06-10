@@ -70,7 +70,7 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
 
         sample_len = torch.stack([xi.isnan().logical_not().sum(0) for xi in inputs])
         sample_mean = torch.stack([xi.nanmean(0) for xi in inputs])
-        sample_var = torch.stack([(xi - sample_mean).pow(2).nanmean(0) for xi in inputs])
+        sample_var = torch.stack([(xi - mi).pow(2).nanmean(0) for xi, mi in zip(inputs, sample_mean)])
 
         sample_len_sum = sample_len.sum(0)
         inputs_mean = (sample_mean * sample_len).sum(0) / sample_len_sum
