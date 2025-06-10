@@ -76,10 +76,18 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
             for xi in inputs
         ])
         sample_means = torch.stack([
-            xi[~xi.isnan() & ~xi.isinf()].mean(-1) for xi in inputs
+            torch.stack([
+                di[~di.isnan() & ~di.isinf()].mean(-1)
+                for di in xi.unbind(-1)
+            ])
+            for xi in inputs
         ])
         sample_vars = torch.stack([
-            xi[~xi.isnan() & ~xi.isinf()].var(-1) for xi in inputs
+            torch.stack([
+                di[~di.isnan() & ~di.isinf()].var(-1)
+                for di in xi.unbind(-1)
+            ])
+            for xi in inputs
         ])
         sample_valid_cnts_sum = sample_valid_cnts.sum(0)
         inputs_mean = (sample_means * sample_valid_cnts).sum(0) / sample_valid_cnts_sum
