@@ -76,8 +76,8 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         inputs_mean = (sample_mean * sample_len).sum(0) / sample_len_sum
         inputs_var = (sample_var * sample_len).sum(0) / sample_len_sum
 
-        print(inputs_mean)
-        print(inputs_var)
+        print((sample_mean * sample_len).sum(0))
+        print((sample_var * sample_len).sum(0))
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
