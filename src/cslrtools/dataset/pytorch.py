@@ -73,12 +73,13 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         sample_var = torch.stack([(xi - mi).pow(2).nanmean(0) for xi, mi in zip(inputs, sample_mean)])
 
         sample_len_sum = sample_len.sum(0)
-        inputs_mean = (sample_mean * sample_len).sum(0) / sample_len_sum
-        inputs_var = (sample_var * sample_len).sum(0) / sample_len_sum
+        mean_mul_len = sample_mean * sample_len
+        var_mul_len = sample_var * sample_len
+        inputs_mean = (mean_mul_len.where(~mean_mul_len.isnan(), 0)).sum(0) / sample_len_sum
+        inputs_var = (var_mul_len.where(~var_mul_len.isnan(), 0)).sum(0) / sample_len_sum
 
-        print((sample_mean * sample_len).isnan().any())
-        print((sample_mean * sample_len).sum(0))
-        
+        print(inputs_mean)
+        print(inputs_var)
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
