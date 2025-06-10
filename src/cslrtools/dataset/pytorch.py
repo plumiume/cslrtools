@@ -74,15 +74,11 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
 
         sample_len_sum = sample_len.sum(0)
 
-        mean_isnan = sample_mean.isnan()
-        mean_isinf = sample_mean.isinf()
-        print(mean_isnan.sum(), mean_isinf.sum())
+        mean_mul_len = sample_mean.where(~(sample_mean.isnan() | sample_mean.isinf()), 0) * sample_len
+        var_mul_len = sample_var.where(~(sample_var.isnan() | sample_var.isinf()), 0) * sample_len
 
-        mean_mul_len = sample_mean / sample_len_sum * sample_len
-        var_mul_len = sample_var / sample_len_sum * sample_len
-
-        inputs_mean = mean_mul_len.sum(0)
-        inputs_var = var_mul_len.sum(0)
+        inputs_mean = mean_mul_len.sum(0) / sample_len_sum
+        inputs_var = var_mul_len.sum(0) / sample_len_sum
 
         labels_set = {blank_label} | set(chain.from_iterable(labels))
         ordered_labels = sorted(labels_set)
