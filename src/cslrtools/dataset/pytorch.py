@@ -143,6 +143,18 @@ class Dataset(torch.utils.data.Dataset[DataTuple], Generic[_M]):
         )
 
     @property
+    def blank_idx(self) -> int:
+        return self._blank_idx
+
+    @property
+    def blank_label(self) -> str:
+        return self._blank_label
+
+    @property
+    def classes(self) -> list[str]:
+        return list(self._classes.keys())
+
+    @property
     def num_classes(self) -> int:
         return len(self._classes)
 
