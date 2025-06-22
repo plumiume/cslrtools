@@ -54,6 +54,7 @@ class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
         self,
         dataset: Dataset[_M],
         stages: list[list[StageString]],
+        filters: list[bool] | None = None,
         common_kwargs: DataLoaderCommonKwargs = DataLoaderCommonKwargs({})
         ):
         super().__init__()
@@ -63,23 +64,24 @@ class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
             )
         self.dataset = dataset
         self.stages = stages
+        self.filters = [True for _ in stages] if filters is None else filters
         self.common_kwargs = common_kwargs
 
     def setup(self, stage: StageString | str | None = None):
         match stage:
             case 'fit':
-                train_indices = [i for i, s in enumerate(self.stages) if 'fit' in s]
+                train_indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'fit' in s and f]
                 self._fit_dataset = torch.utils.data.Subset(self.dataset, train_indices)
-                val_indices = [i for i, s in enumerate(self.stages) if 'val' in s]
+                val_indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'val' in s and f]
                 self._val_dataset = torch.utils.data.Subset(self.dataset, val_indices)
             case 'validate':
-                indices = [i for i, s in enumerate(self.stages) if 'val' in s]
+                indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'val' in s and f]
                 self._val_dataset = torch.utils.data.Subset(self.dataset, indices)
             case 'test':
-                indices = [i for i, s in enumerate(self.stages) if 'test' in s]
+                indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'test' in s and f]
                 self._test_dataset = torch.utils.data.Subset(self.dataset, indices)
             case 'predict':
-                indices = [i for i, s in enumerate(self.stages) if 'predict' in s]
+                indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'predict' in s and f]
                 self._predict_dataset = torch.utils.data.Subset(self.dataset, indices)
             case _:
                 pass
