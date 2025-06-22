@@ -67,22 +67,21 @@ class LightningDataModule(lightning.pytorch.LightningDataModule, Generic[_M]):
         self.filters = [True for _ in stages] if filters is None else filters
         self.common_kwargs = common_kwargs
 
+    def _setup_subset(self, stage: StageString):
+        indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if stage in s and f]
+        return torch.utils.data.Subset(self.dataset, indices)
+
     def setup(self, stage: StageString | str | None = None):
         match stage:
             case 'fit':
-                train_indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'fit' in s and f]
-                self._fit_dataset = torch.utils.data.Subset(self.dataset, train_indices)
-                val_indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'val' in s and f]
-                self._val_dataset = torch.utils.data.Subset(self.dataset, val_indices)
+                self._fit_dataset = self._setup_subset('fit')
+                self._val_dataset = self._setup_subset('val')
             case 'validate':
-                indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'val' in s and f]
-                self._val_dataset = torch.utils.data.Subset(self.dataset, indices)
+                self._val_dataset = self._setup_subset('val')
             case 'test':
-                indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'test' in s and f]
-                self._test_dataset = torch.utils.data.Subset(self.dataset, indices)
+                self._test_dataset = self._setup_subset('test')
             case 'predict':
-                indices = [i for i, (s, f) in enumerate(zip(self.stages, self.filters)) if 'predict' in s and f]
-                self._predict_dataset = torch.utils.data.Subset(self.dataset, indices)
+                self._predict_dataset = self._setup_subset('predict')
             case _:
                 pass
 
