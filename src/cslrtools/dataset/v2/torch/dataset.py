@@ -9,7 +9,7 @@ from torch.utils.data import Dataset as _Dataset
 
 PaddingMode = Literal['constant', 'reflect', 'replicate', 'circular']
 
-_M = TypeVar("_M", bound=Mapping[str, Any])
+_M = TypeVar("_M", bound=Mapping[str, Any], covariant=True)
 
 @dataclass
 class DatasetItem(Generic[_M]):
