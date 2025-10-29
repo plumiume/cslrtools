@@ -1,7 +1,11 @@
 # pyright: reportUnnecessaryIsInstance=false
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, cast, Any, Mapping, Hashable, Callable, TypeVar, Generic, Literal
+from typing import (
+    TYPE_CHECKING, cast, Any,
+    Iterator, Mapping, Hashable, Callable,
+    TypeVar, Generic, Literal
+)
 from typing_extensions import TypeIs
 from pathlib import Path
 
@@ -191,7 +195,7 @@ class SafetensorMap(Mapping[str | _T, Tensor]):
 
         return self.safetensors.get_tensor(key)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str | _T]:
         return iter(self.safetensors.keys())
 
     def __len__(self) -> int:
