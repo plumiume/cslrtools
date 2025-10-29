@@ -20,9 +20,11 @@ except ImportError:
         "Please install it with 'pip install .[lightning]'"
     )
 
-from typing import Literal, TypedDict, Generic
+from typing import Literal, TypedDict, TypeVar, Generic
 import torch
-from .pytorch import Dataset, _M
+from .pytorch import Dataset, Metadata
+
+_M = TypeVar('_M', bound=Metadata)
 
 StageString = Literal['fit', 'val', 'test', 'predict']
 

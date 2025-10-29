@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import cast
 from torch import Tensor
 import torch
 import torchaudio
@@ -54,8 +55,13 @@ def edit_distance(
     blen_reshaped = blen.reshape(size)
 
     o = torch.tensor([
-        torchaudio.functional.edit_distance(
-            ai[:aleni].tolist(), bi[:bleni].tolist()
+        torchaudio.functional.edit_distance( # pyright: ignore[reportUnknownMemberType]
+            cast(list[int],
+                ai[:aleni].int().tolist() # pyright: ignore[reportUnknownMemberType]
+            ),
+            cast(list[int],
+                bi[:bleni].int().tolist() # pyright: ignore[reportUnknownMemberType]
+            )
         )
         for ai, aleni, bi, bleni in zip(
             a_reshaped, alen_reshaped, b_reshaped, blen_reshaped

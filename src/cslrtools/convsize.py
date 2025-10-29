@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# pyright: reportUnnecessaryIsInstance=false
+
 from typing import (
     TypeVar, Generic, overload,
     Sequence
@@ -66,7 +68,7 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
     """
 
     def __init__(self, conv: _ConvNd):
-        super().__init__()
+        super().__init__() # pyright: ignore[reportUnknownMemberType]
         self.kernel_size = nn.Parameter(torch.tensor(conv.kernel_size), requires_grad=False)
         self.stride = nn.Parameter(torch.tensor(conv.stride), requires_grad=False)
         self.padding = nn.Parameter(torch.tensor(conv.padding), requires_grad=False)
@@ -120,13 +122,16 @@ class ConvSize(nn.Module, Generic[_ConvNd]):
         change_ndim = len(self.kernel_size)
         change_shape = shape[-change_ndim:]
         unchange_shape = shape[:-change_ndim]
-        changed_shape = Size(conv_size(
-            torch.tensor(change_shape),
-            self.kernel_size,
-            self.stride,
-            self.padding,
-            self.dilation
-        ).tolist())
+        changed_shape = Size(
+            conv_size(
+                # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+                torch.tensor(change_shape),
+                self.kernel_size,
+                self.stride,
+                self.padding,
+                self.dilation
+            ).tolist()
+        )
         return Size(unchange_shape + changed_shape)
 
 class ConvTransposeSize(nn.Module, Generic[_ConvTransposeNd]):
@@ -143,7 +148,7 @@ class ConvTransposeSize(nn.Module, Generic[_ConvTransposeNd]):
     """
 
     def __init__(self, conv: _ConvTransposeNd):
-        super().__init__()
+        super().__init__() # pyright: ignore[reportUnknownMemberType]
         self.kernel_size = nn.Parameter(torch.tensor(conv.kernel_size), requires_grad=False)
         self.stride = nn.Parameter(torch.tensor(conv.stride), requires_grad=False)
         self.padding = nn.Parameter(torch.tensor(conv.padding), requires_grad=False)
@@ -199,12 +204,15 @@ class ConvTransposeSize(nn.Module, Generic[_ConvTransposeNd]):
         change_ndim = len(self.kernel_size)
         change_shape = shape[-change_ndim:]
         unchange_shape = shape[:-change_ndim]
-        changed_shape = Size(conv_transpose_size(
-            torch.tensor(change_shape),
-            self.kernel_size,
-            self.stride,
-            self.padding,
-            self.output_padding,
-            self.dilation
-        ).tolist())
+        changed_shape = Size(
+            conv_transpose_size(
+                # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+                torch.tensor(change_shape),
+                self.kernel_size,
+                self.stride,
+                self.padding,
+                self.output_padding,
+                self.dilation
+            ).tolist()
+        )
         return Size(unchange_shape + changed_shape)

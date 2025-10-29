@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import overload, Literal, Iterable, Generator
+from typing import cast, overload, Literal, Iterable, Iterator
 import torch
 from torch import Tensor
 
@@ -103,10 +103,12 @@ def ctc_decode(
     x_cutted = (xi[:xleni] for xi, xleni in zip(x_reshaped, xlen_reshaped))
     x_blank_removed = (xi[xi != blank] for xi in x_cutted)
 
-    results: Generator[tuple[Tensor, ...], None, None] = (
-        torch.unique_consecutive(xi, return_inverse=True, return_counts=True)
+    results = cast(Iterator[tuple[Tensor, Tensor, Tensor]], (
+        torch.unique_consecutive( # pyright: ignore[reportUnknownMemberType]
+            xi, return_inverse=True, return_counts=True
+        )
         for xi in x_blank_removed
-    )
+    ))
 
     o = torch.nn.utils.rnn.pad_sequence(
         [r[0] for r in results],
