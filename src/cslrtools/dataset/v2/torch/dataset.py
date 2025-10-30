@@ -1,12 +1,15 @@
 from abc import ABC, abstractmethod
 from typing import (
-    TypeVar, ParamSpec, Generic,
-    Hashable, Mapping,
+    Any, TypeVar, ParamSpec, Generic,
+    cast, Mapping, TypeAlias,
     Callable, Self, Iterator,
+    
 )
 
 from functools import wraps
 from contextlib import contextmanager
+from os import PathLike as _PathLike
+from pathlib import Path
 from threading import local
 from multiprocessing.context import BaseContext
 
@@ -17,6 +20,28 @@ from torch.utils.data import (
     IterableDataset as _IterableDataset,
     DataLoader
 )
+
+import zarr
+from fsspec.mapping import FSMap as _FSMap
+from zarr.storage._common import Store, StorePath, Buffer
+from zarr.core.common import JSON
+
+
+# ルートグループ(Group)
+# metadata: メタデータグループ cslrtoolsシステム外の情報を格納、名前空間の衝突を避けるため
+# {idx}: アイテムグループ
+
+# アイテムグループ(Group)
+# videos.{kvid}: Array
+# landmarks.{klm}.landmark: Array
+# landmarks.{klm}.connection: Array
+# connections.{klm1}.{klm2}: Array
+# targets.{ktgt}: Array
+
+PathLike = _PathLike[str]
+
+FSMap: TypeAlias = _FSMap | None
+StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
 
 _P = ParamSpec('_P')
 _R = TypeVar('_R')
@@ -45,9 +70,22 @@ def _require_internal_call(extra_msg: str = ''):
         return wrapper
     return decorator
 
-_Kvid = TypeVar('_Kvid', bound=Hashable, covariant=True)
-_Klm = TypeVar('_Klm', bound=Hashable, covariant=True)
-_Ktgt = TypeVar('_Ktgt', bound=Hashable, covariant=True)
+
+def _get_array(group: zarr.Group, path: str) -> zarr.Array:
+    arr = group.get(path)
+    if arr is None or not isinstance(arr, zarr.Array):
+        raise KeyError(f'Array at path "{path}" not found in Zarr group.')
+    return arr
+
+def _get_group(group: zarr.Group, path: str) -> zarr.Group:
+    grp = group.get(path)
+    if grp is None or not isinstance(grp, zarr.Group):
+        raise KeyError(f'Group at path "{path}" not found in Zarr group.')
+    return grp
+
+_Kvid = TypeVar('_Kvid', bound=str, covariant=True)
+_Klm = TypeVar('_Klm', bound=str, covariant=True)
+_Ktgt = TypeVar('_Ktgt', bound=str, covariant=True)
 
 class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
     """
@@ -259,6 +297,82 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
                 targets=new_targets,
             )
 
+    @classmethod
+    def from_zarr(
+        cls, group: zarr.Group 
+        ) -> Self:
+
+        videos: dict[_Kvid, Tensor] = {}
+        landmarks_landmarks: dict[_Klm, Tensor] = {}
+        landmarks_connections: dict[_Klm, Tensor] = {}
+        connections: dict[tuple[_Klm, _Klm], Tensor] = {}
+        targets: dict[_Ktgt, Tensor] = {}
+
+        for karr in group.array_keys():
+            splited_key = karr.split('.')
+            arr = _get_array(group, karr)
+            if karr.startswith('videos.'):
+                kvid = cast(_Kvid, splited_key[1])
+                videos[kvid] = torch.tensor(arr[:])
+            elif karr.startswith('landmarks.landmarks'):
+                klm = cast(_Klm, splited_key[2])
+                landmarks_landmarks[klm] = torch.tensor(arr[:])
+            elif karr.startswith('landmarks.connections'):
+                klm = cast(_Klm, splited_key[2])
+                landmarks_connections[klm] = torch.tensor(arr[:])
+            elif karr.startswith('connections.'):
+                klm1 = cast(_Klm, splited_key[1])
+                klm2 = cast(_Klm, splited_key[2])
+                connections[(klm1, klm2)] = torch.tensor(arr[:])
+            elif karr.startswith('targets.'):
+                ktgt = cast(_Ktgt, splited_key[1])
+                targets[ktgt] = torch.tensor(arr[:])
+            else:
+                raise KeyError(f'Unknown array key "{karr}" in Zarr group.')
+
+        common_keys = landmarks_landmarks.keys() ^ landmarks_connections.keys()
+
+        with _enable_internal_calls():
+            return cls(
+                videos=videos,
+                landmarks={
+                    klm: (landmarks_landmarks[klm], landmarks_connections[klm])
+                    for klm in common_keys
+                },
+                connections=connections,
+                targets=targets,
+            )
+
+    def to_zarr(
+        self, group: zarr.Group 
+        ):
+
+        for kvid, vid in self.videos.items():
+            group.create_array(
+                f'videos.{kvid}',
+                data=vid.cpu().numpy(),
+            )
+        for klm, (lm, conn) in self.landmarks.items():
+            group.create_array(
+                f'landmarks.landmarks.{klm}',
+                data=lm.cpu().numpy(),
+            )
+            group.create_array(
+                f'landmarks.connections.{klm}',
+                data=conn.cpu().numpy(),
+            )
+        for (klm1, klm2), conn in self.connections.items():
+            group.create_array(
+                f'connections.{klm1}.{klm2}',
+                data=conn.cpu().numpy(),
+            )
+        for ktgt, tgt in self.targets.items():
+            group.create_array(
+                f'targets.{ktgt}',
+                data=tgt.cpu().numpy(),
+            )
+
+
     # lightning.pytorch.utilities.move_data_to_device calls this method
     def to(self, device: torch.device | str) -> Self:
         """
@@ -374,6 +488,52 @@ class IterableDataset(ABC, _IterableDataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
         """
         pass
 
+def dataset_to_zarr(
+    dataset: (
+        Dataset[_Kvid, _Klm, _Ktgt] |
+        IterableDataset[_Kvid, _Klm, _Ktgt]
+    ),
+    store: StoreLike,
+    **metadata: JSON,
+    ):
+
+    root = zarr.create_group(
+        store
+    )
+
+    root.create_group('metadata', **metadata)
+
+    if isinstance(dataset, Dataset):
+        iterator = enumerate(dataset[i] for i in range(len(dataset)))
+    else:
+        iterator = enumerate(dataset)
+
+    for idx, item in iterator:
+        item_group = root.create_group(str(idx))
+        item.to_zarr(item_group)
+
+class ZarrDataset(Dataset[_Kvid, _Klm, _Ktgt]):
+
+    def __init__(self, store: StoreLike):
+        self._root = zarr.open_group(store, mode='r')
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        metadata_group = _get_group(self._root, 'metadata')
+        return dict(metadata_group.attrs)
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self._root.group_keys()) - 1
+
+    def __getitem__(self, index: int) -> DatasetItem[_Kvid, _Klm, _Ktgt]:
+        item_group = _get_group(self._root, str(index))
+        return DatasetItem[_Kvid, _Klm, _Ktgt].from_zarr(item_group)
+
+def dataset_from_zarr(
+    store: StoreLike
+    ) -> ZarrDataset[Any, Any, Any]:
+    return ZarrDataset(store)
+
 def create_dataloader(
     dataset: (
         Dataset[_Kvid, _Klm, _Ktgt] | 
@@ -407,3 +567,70 @@ def create_dataloader(
         prefetch_factor=prefetch_factor,
         persistent_workers=persistent_workers,
     )
+
+
+
+# 以下はプロトタイプ
+
+# ZARR_VIDEOS_NAME = "{idx}.{kvid}"
+# ZARR_LANDMARKS_LANDMARK_NAME = "{idx}.{klm}.landmark"
+# ZARR_LANDMARKS_CONNECTION_NAME = "{idx}.{klm}.connection"
+# ZARR_CONNECTIONS_NAME = "{idx}.{klm1}.{klm2}"
+# ZARR_TARGETS_NAME = "{idx}.{ktgt}"
+
+# def save_dataset_as_zarr(
+#     dataset: (
+#         Dataset[_Kvid, _Klm, _Ktgt] | 
+#         IterableDataset[_Kvid, _Klm, _Ktgt] 
+#     ),
+#     zarr_path: PathLike,
+#     # any_file_stem.cslrtools2.zarr
+#     **metadata: JSON,
+#     ):
+
+#     zarr_root = zarr.open_group(
+#         Path(zarr_path), mode='w',
+#         attributes=metadata,
+#     )
+
+#     if isinstance(dataset, Dataset):
+#         iterator = enumerate(dataset[i] for i in range(len(dataset)))
+#     else:
+#         iterator = enumerate(dataset)
+
+#     zarr_videos = zarr_root.create_group("videos")
+#     zarr_landmarks = zarr_root.create_group("landmarks")
+#     zarr_connections = zarr_root.create_group("connections")
+#     zarr_targets = zarr_root.create_group("targets")
+
+#     for idx, item in iterator:
+
+#         for kvid, video in item.videos.items():
+#             zarr_videos.create_array(
+#                 ZARR_VIDEOS_NAME.format(idx=idx, kvid=kvid),
+#                 data=video.cpu().numpy(),
+#             )
+
+#         for klm, (landmark, connection) in item.landmarks.items():
+#             zarr_landmarks.create_array(
+#                 ZARR_LANDMARKS_LANDMARK_NAME.format(idx=idx, klm=klm),
+#                 data=landmark.cpu().numpy(),
+#             )
+#             zarr_connections.create_array(
+#                 ZARR_LANDMARKS_CONNECTION_NAME.format(idx=idx, klm=klm),
+#                 data=connection.cpu().numpy(),
+#             )
+
+#         for (klm1, klm2), connection in item.connections.items():
+#             zarr_connections.create_array(
+#                 ZARR_CONNECTIONS_NAME.format(idx=idx, klm1=klm1, klm2=klm2),
+#                 data=connection.cpu().numpy(),
+#             )
+
+#         for ktgt, target in item.targets.items():
+#             zarr_targets.create_array(
+#                 ZARR_TARGETS_NAME.format(idx=idx, ktgt=ktgt),
+#                 data=target.cpu().numpy(),
+#             )
+
+    
