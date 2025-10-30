@@ -23,7 +23,7 @@ def _is_array_map(
 
     return isinstance(obj, type_)
 
-class Loader(ABC, Generic[_T, _A]):
+class ArrayLoader(ABC, Generic[_T, _A]):
 
     def __init__(
         self,
@@ -68,7 +68,7 @@ class Loader(ABC, Generic[_T, _A]):
         else:
             return self.as_tensor(value)
 
-class CsvLoader(Loader[_T, Tensor]):
+class CsvLoader(ArrayLoader[_T, Tensor]):
 
     def __init__(
         self,
@@ -86,7 +86,7 @@ class CsvLoader(Loader[_T, Tensor]):
         data = np.loadtxt(path, delimiter=self.delimiter)
         return torch.tensor(data).reshape(self.shape)
 
-class NpyLoader(Loader[_T, Tensor]):
+class NpyLoader(ArrayLoader[_T, Tensor]):
 
     def __init__(
         self,
@@ -104,7 +104,7 @@ class NpyLoader(Loader[_T, Tensor]):
         data = np.load(path)
         return torch.tensor(data)
 
-class NpzLoader(Loader[_T, np.ndarray]):
+class NpzLoader(ArrayLoader[_T, np.ndarray]):
 
     def __init__(
         self,
@@ -126,7 +126,7 @@ class NpzLoader(Loader[_T, np.ndarray]):
         assert self._is_npz_file(data)
         return cast(Mapping[str | _T, np.ndarray], data)
 
-class PthLoader(Loader[_T, Tensor]):
+class PthLoader(ArrayLoader[_T, Tensor]):
 
     def __init__(
         self,
@@ -201,7 +201,7 @@ class SafetensorMap(Mapping[str | _T, Tensor]):
     def __len__(self) -> int:
         return len(self.safetensors.keys())
 
-class SafetensorLoader(Loader[_T, Tensor]):
+class SafetensorLoader(ArrayLoader[_T, Tensor]):
 
     def __init__(
         self,
@@ -236,7 +236,19 @@ class SafetensorLoader(Loader[_T, Tensor]):
             safetensors=safetensor_file
         )
 
-        
 
 
+class ImageLoader(ArrayLoader[_T, Tensor]):
+
+    def __init__(
+        self,
+        default_key: _T = None,
+        enable_cache: bool = False,
+        ):
+
+        super().__init__(
+            default_key,
+            enable_cache=enable_cache,
+            as_tensor=lambda x: x
+        )
 
