@@ -24,6 +24,16 @@ def _is_array_map(
     return isinstance(obj, type_)
 
 class ArrayLoader(ABC, Generic[_T, _A]):
+    """
+    Abstract base class for generic array loaders.
+    Loads tensors or mappings from data files,
+    provides caching and type conversion (as_tensor).
+    Subclasses implement the load method to define
+    file format-specific loading logic.
+    get_tensor enables key-based loading,
+    enable_cache accelerates repeated access.
+    Supports flexible handling of data types and keys.
+    """
 
     def __init__(
         self,
@@ -69,6 +79,13 @@ class ArrayLoader(ABC, Generic[_T, _A]):
             return self.as_tensor(value)
 
 class CsvLoader(ArrayLoader[_T, Tensor]):
+    """
+    Loader for CSV files as tensors.
+    Allows specification of delimiter and reshape shape.
+    Converts single arrays to torch.Tensor.
+    Supports caching and key-based access.
+    Suitable for lightweight numeric data loading.
+    """
 
     def __init__(
         self,
@@ -87,6 +104,12 @@ class CsvLoader(ArrayLoader[_T, Tensor]):
         return torch.tensor(data).reshape(self.shape)
 
 class NpyLoader(ArrayLoader[_T, Tensor]):
+    """
+    Loader for NumPy npy files as tensors.
+    No type conversion needed (default Tensor).
+    Optimized for fast loading of single arrays.
+    Supports caching and key-based access.
+    """
 
     def __init__(
         self,
@@ -105,6 +128,13 @@ class NpyLoader(ArrayLoader[_T, Tensor]):
         return torch.tensor(data)
 
 class NpzLoader(ArrayLoader[_T, np.ndarray]):
+    """
+    Loader for NumPy npz (multiple arrays) files.
+    Supports mapping type for multiple keys.
+    Each array can be converted to torch.Tensor.
+    Ensures type safety with _is_npz_file.
+    Supports caching and key-based access.
+    """
 
     def __init__(
         self,
@@ -127,6 +157,13 @@ class NpzLoader(ArrayLoader[_T, np.ndarray]):
         return cast(Mapping[str | _T, np.ndarray], data)
 
 class PthLoader(ArrayLoader[_T, Tensor]):
+    """
+    Loader for PyTorch pth files (models/weights/tensors).
+    Supports fine-grained control via map_location, pickle_mode, etc.
+    Options like weights_only and mmap are also supported.
+    Handles both single tensors and mapping types.
+    Supports caching and key-based access.
+    """
 
     def __init__(
         self,
@@ -175,6 +212,13 @@ else:
     safe_open = Any
 
 class SafetensorMap(Mapping[str | _T, Tensor]):
+    """
+    Mapping wrapper for safetensors files.
+    Retrieves tensors by key.
+    Supports default_key for default selection.
+    Abstracts safetensors API.
+    Provides type-safe access and iteration.
+    """
     def __init__(
         self,
         default_key: _T | None,
@@ -202,6 +246,13 @@ class SafetensorMap(Mapping[str | _T, Tensor]):
         return len(self.safetensors.keys())
 
 class SafetensorLoader(ArrayLoader[_T, Tensor]):
+    """
+    Loader for safetensors format files.
+    Uses safe_open API for loading.
+    Supports retrieval of multiple tensors as a mapping.
+    Supports caching and key-based access.
+    Raises ImportError if safetensors is not installed.
+    """
 
     def __init__(
         self,
@@ -236,19 +287,37 @@ class SafetensorLoader(ArrayLoader[_T, Tensor]):
             safetensors=safetensor_file
         )
 
+####### video loader #######
 
-
-class ImageLoader(ArrayLoader[_T, Tensor]):
+class VideoLoader(ArrayLoader[_T, Tensor]):
+    """
+    Loader for video files (e.g., mp4, avi) as tensors.
+    Flexible preprocessing and type conversion via as_tensor.
+    Handles both single tensors and mapping types.
+    Supports caching and key-based access.
+    Suitable for batch processing of video data.
+    """
 
     def __init__(
         self,
         default_key: _T = None,
         enable_cache: bool = False,
+        as_tensor: Callable[[Tensor], Tensor] = lambda x: x,
         ):
-
         super().__init__(
             default_key,
             enable_cache=enable_cache,
-            as_tensor=lambda x: x
+            as_tensor=as_tensor
         )
 
+    def load(self, path: Path) -> Tensor | Mapping[str | _T, Tensor]:
+
+        import torchvision.io
+
+        video, _, _ = torchvision.io.read_video(
+            str(path),
+            pts_unit="sec",
+            output_format="TCHW",
+        )
+
+        return video.unsqueeze(0)  # (1, T, C, H, W)
