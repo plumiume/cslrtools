@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "clipar",
     "safetensors>=0.6.2",
     "torch>=2.0.0",
     "torchaudio>=2.0.1",
@@ -20,9 +21,19 @@ lightning = [
     "lightning>=2.0.0",
 ]
 
+[project.scripts]
+cslrtools2 = "cslrtools.dataset.v2.torch.app:main"
+
+[project.entry-points."cslrtools.dataset.v2.torch.plugins"]
+# Plugins will be registered here dynamically
+# from other cslrtools projects or third-party packages.
+
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
 source = "vcs"
+
+[tool.uv.sources]
+clipar = { git = "https://github.com/plumiume/python-clipar.git" }
