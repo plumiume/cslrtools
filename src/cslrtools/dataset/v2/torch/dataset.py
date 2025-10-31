@@ -51,6 +51,7 @@ class _Local(local):
 _local = _Local()
 @contextmanager
 def _enable_internal_calls():
+    """Context manager to enable internal calls."""
     tmp = _local.in_internal_call
     _local.in_internal_call = True
     try:
@@ -58,6 +59,7 @@ def _enable_internal_calls():
     finally:
         _local.in_internal_call = tmp
 def _require_internal_call(extra_msg: str = ''):
+    """Decorator to require internal call context for method execution."""
     def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
         @wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
@@ -70,14 +72,15 @@ def _require_internal_call(extra_msg: str = ''):
         return wrapper
     return decorator
 
-
 def _get_array(group: zarr.Group, path: str) -> zarr.Array:
+    """Get a Zarr array from a group by path."""
     arr = group.get(path)
     if arr is None or not isinstance(arr, zarr.Array):
         raise KeyError(f'Array at path "{path}" not found in Zarr group.')
     return arr
 
 def _get_group(group: zarr.Group, path: str) -> zarr.Group:
+    """Get a Zarr group from a group by path."""
     grp = group.get(path)
     if grp is None or not isinstance(grp, zarr.Group):
         raise KeyError(f'Group at path "{path}" not found in Zarr group.')
@@ -90,7 +93,7 @@ _Ktgt = TypeVar('_Ktgt', bound=str, covariant=True)
 class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
     """
     A container for a single dataset sample with videos, landmarks, and targets.
-    
+
     This class holds normalized multimodal data for sign language recognition tasks.
     Use `from_sample()` factory method to create instances with automatic normalization.
     Direct instantiation via `__init__()` is restricted to internal use only.
@@ -298,9 +301,15 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
             )
 
     @classmethod
-    def from_zarr(
-        cls, group: zarr.Group 
-        ) -> Self:
+    def from_zarr(cls, group: zarr.Group) -> Self:
+        """Create a DatasetItem from a Zarr group.
+
+        Args:
+            group (zarr.Group): The Zarr group to read data from.
+
+        Returns:
+            Self: A DatasetItem instance.
+        """
 
         videos: dict[_Kvid, Tensor] = {}
         landmarks_landmarks: dict[_Klm, Tensor] = {}
@@ -343,9 +352,12 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
                 targets=targets,
             )
 
-    def to_zarr(
-        self, group: zarr.Group 
-        ):
+    def to_zarr(self, group: zarr.Group):
+        """Write the dataset to a Zarr group.
+
+        Args:
+            group (zarr.Group): The Zarr group to write data to.
+        """
 
         for kvid, vid in self.videos.items():
             group.create_array(
@@ -372,6 +384,97 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
                 data=tgt.cpu().numpy(),
             )
 
+    @classmethod
+    def from_folder(cls, dirpath: PathLike) -> Self:
+        """
+        Create a DatasetItem from a folder of files.
+
+        Args:
+            dirpath (PathLike): Path to the folder containing the dataset files.
+
+        Returns:
+            Self: A DatasetItem instance.
+        """
+
+        dirpath = Path(dirpath)
+
+        videos: dict[_Kvid, Tensor] = {}
+        landmarks_landmarks: dict[_Klm, Tensor] = {}
+        landmarks_connections: dict[_Klm, Tensor] = {}
+        connections: dict[tuple[_Klm, _Klm], Tensor] = {}
+        targets: dict[_Ktgt, Tensor] = {}
+
+        for filepath in dirpath.iterdir():
+            splited_name = filepath.name.split('.')
+            if filepath.name.startswith('video.'):
+                kvid = cast(_Kvid, splited_name[1])
+                videos[kvid] = torch.load(filepath)
+            elif filepath.name.startswith('landmark.landmark.'):
+                klm = cast(_Klm, splited_name[2])
+                landmarks_landmarks[klm] = torch.load(filepath)
+            elif filepath.name.startswith('landmark.connection.'):
+                klm = cast(_Klm, splited_name[2])
+                landmarks_connections[klm] = torch.load(filepath)
+            elif filepath.name.startswith('connection.'):
+                klm1 = cast(_Klm, splited_name[1])
+                klm2 = cast(_Klm, splited_name[2])
+                connections[(klm1, klm2)] = torch.load(filepath)
+            elif filepath.name.startswith('target.'):
+                ktgt = cast(_Ktgt, splited_name[1])
+                targets[ktgt] = torch.load(filepath)
+            else:
+                raise KeyError(f'Unknown file "{filepath.name}" in folder.')
+
+        common_keys = landmarks_landmarks.keys() ^ landmarks_connections.keys()
+
+        with _enable_internal_calls():
+            return cls(
+                videos=videos,
+                landmarks={
+                    klm: (landmarks_landmarks[klm], landmarks_connections[klm])
+                    for klm in common_keys
+                },
+                connections=connections,
+                targets=targets,
+            )
+
+    def to_folder(
+        self, dirpath: PathLike
+        ):
+        """
+        Export the dataset to a filesystem directory.
+
+        Creates a directory structure with metadata JSON and numbered item subdirectories.
+        Each dataset item is serialized via DatasetItem.to_folder().
+
+        Args:
+            dirpath (PathLike): Target directory path (created if not exists).
+        """
+
+        for kvid, vid in self.videos.items():
+            torch.save(
+                vid,
+                Path(dirpath) / f'video.{kvid}.pt'
+            )
+        for klm, (lm, conn) in self.landmarks.items():
+            torch.save(
+                lm,
+                Path(dirpath) / f'landmark.{klm}.landmark.pt'
+            )
+            torch.save(
+                conn,
+                Path(dirpath) / f'landmark.{klm}.connection.pt'
+            )
+        for (klm1, klm2), conn in self.connections.items():
+            torch.save(
+                conn,
+                Path(dirpath) / f'connection.{klm1}.{klm2}.pt'
+            )
+        for ktgt, tgt in self.targets.items():
+            torch.save(
+                tgt,
+                Path(dirpath) / f'target.{ktgt}.pt'
+            )
 
     # lightning.pytorch.utilities.move_data_to_device calls this method
     def to(self, device: torch.device | str) -> Self:
@@ -413,6 +516,15 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
 def collate_fn(
     batch: list[DatasetItem[_Kvid, _Klm, _Ktgt]]
     ) -> DatasetItem[_Kvid, _Klm, _Ktgt]:
+    """
+    Collate a batch of dataset items into a single item.
+
+    Args:
+        batch: List of dataset items to collate.
+
+    Returns:
+        DatasetItem: A single collated dataset item.
+    """
 
     first_item = batch[0]
 
@@ -477,6 +589,12 @@ class Dataset(ABC, _Dataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
         pass
 
 class IterableDataset(ABC, _IterableDataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
+    """
+    Abstract base class for iterable-style datasets returning DatasetItem.
+    Requires implementing __iter__ for sequential access without indexing.
+    Useful for streaming large datasets or data from external sources.
+    Compatible with PyTorch DataLoader for batching and multiprocessing.
+    """
 
     @abstractmethod
     def __iter__(self) -> Iterator[DatasetItem[_Kvid, _Klm, _Ktgt]]:
@@ -488,6 +606,40 @@ class IterableDataset(ABC, _IterableDataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
         """
         pass
 
+######################## Utility Dataset Classes #########################
+
+class CacheItemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
+    """
+    Caching wrapper for map-style datasets to avoid redundant data loading.
+    Stores loaded items in memory for fast repeated access.
+    Useful for small to medium datasets that fit in RAM.
+    Call clear_cache() to free memory when needed.
+
+    Args:
+        base_dataset: The underlying Dataset to wrap and cache items from.
+    """
+
+    def __init__(self, base_dataset: Dataset[_Kvid, _Klm, _Ktgt]):
+        self._base_dataset = base_dataset
+        self._cache: dict[int, DatasetItem[_Kvid, _Klm, _Ktgt]] = {}
+
+    def clear_cache(self):
+        """Clear the internal cache to free memory."""
+        self._cache.clear()
+
+    def __len__(self) -> int:
+        return len(self._base_dataset)
+
+    def __getitem__(self, index: int) -> DatasetItem[_Kvid, _Klm, _Ktgt]:
+        if index in self._cache:
+            return self._cache[index]
+        item = self._base_dataset[index]
+        self._cache[index] = item
+        return item
+
+
+############################ Zarr Integration ############################
+
 def dataset_to_zarr(
     dataset: (
         Dataset[_Kvid, _Klm, _Ktgt] |
@@ -496,10 +648,26 @@ def dataset_to_zarr(
     store: StoreLike,
     **metadata: JSON,
     ):
+    """
+    Export a dataset to Zarr format for efficient storage and retrieval.
+    
+    Creates a Zarr group hierarchy with metadata and numbered item groups.
+    Each dataset item is serialized via DatasetItem.to_zarr().
+    Supports both map-style and iterable-style datasets.
+    
+    Args:
+        dataset: Source dataset (Dataset or IterableDataset).
+        store: Zarr storage location (path, Store, StorePath, etc.).
+        **metadata: Additional metadata stored in 'metadata' group attributes.
+    
+    Structure:
+        {store}/metadata/  - Group with metadata attributes
+        {store}/0/         - First item group
+        {store}/1/         - Second item group
+        ...
+    """
 
-    root = zarr.create_group(
-        store
-    )
+    root = zarr.create_group(store)
 
     root.create_group('metadata', **metadata)
 
@@ -513,6 +681,16 @@ def dataset_to_zarr(
         item.to_zarr(item_group)
 
 class ZarrDataset(Dataset[_Kvid, _Klm, _Ktgt]):
+    """
+    Read-only dataset backed by Zarr storage for efficient array access.
+    Supports local filesystem and cloud storage via fsspec.
+    Metadata is stored in a dedicated 'metadata' group.
+    Items are indexed by numeric keys (0, 1, 2, ...).
+    Efficient for large datasets with chunked array storage.
+
+    Args:
+        store: Zarr storage location (path, Store, StorePath, etc.)
+    """
 
     def __init__(self, store: StoreLike):
         self._root = zarr.open_group(store, mode='r')
@@ -532,7 +710,103 @@ class ZarrDataset(Dataset[_Kvid, _Klm, _Ktgt]):
 def dataset_from_zarr(
     store: StoreLike
     ) -> ZarrDataset[Any, Any, Any]:
+    """Create a ZarrDataset from a Zarr store."""
     return ZarrDataset(store)
+
+######################## File System Integration #########################
+
+def dataset_to_folder(
+    dataset: (
+        Dataset[_Kvid, _Klm, _Ktgt] |
+        IterableDataset[_Kvid, _Klm, _Ktgt]
+    ),
+    dirpath: PathLike,
+    **metadata: JSON,
+    ):
+    """
+    Export a dataset to a filesystem directory for portable storage.
+    
+    Creates a directory structure with metadata JSON and numbered item subdirectories.
+    Each dataset item is serialized via DatasetItem.to_folder().
+    Supports both map-style and iterable-style datasets.
+    
+    Args:
+        dataset: Source dataset (Dataset or IterableDataset).
+        dirpath: Target directory path (created if not exists).
+        **metadata: Additional metadata saved to metadata.json.
+    
+    Structure:
+        {dirpath}/metadata.json  - Metadata JSON file
+        {dirpath}/items/0/       - First item directory
+        {dirpath}/items/1/       - Second item directory
+        ...
+    """
+
+    import json
+
+    dirpath = Path(dirpath)
+    dirpath.mkdir(parents=True, exist_ok=True)
+
+    json.dump(metadata, (dirpath / 'metadata.json').open('w'))
+
+    items_dir = dirpath / 'items'
+    items_dir.mkdir(parents=True, exist_ok=True)
+
+    if isinstance(dataset, Dataset):
+        iterator = enumerate(dataset[i] for i in range(len(dataset)))
+    else:
+        iterator = enumerate(dataset)
+
+    for idx, item in iterator:
+        item_dir = items_dir / str(idx)
+        item_dir.mkdir(parents=True, exist_ok=True)
+        item.to_folder(item_dir)
+
+class FileSystemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
+    """
+    Dataset backed by filesystem directory structure for portability.
+    Each item is stored in a numbered subdirectory (0, 1, 2, ...).
+    Metadata is stored in metadata.json at the root level.
+    Supports any filesystem accessible via pathlib.Path.
+    Useful for human-readable and debuggable storage.
+
+    Args:
+        dirpath: Root directory path containing dataset structure.
+    """
+
+    def __init__(self, dirpath: PathLike):
+        import json
+
+        dirpath = Path(dirpath)
+        self._dirpath = dirpath
+
+        metadata_path = dirpath / 'metadata.json'
+        if metadata_path.exists():
+            with metadata_path.open('r') as f:
+                self._metadata: Mapping[str, Any] = json.load(f)
+        else:
+            self._metadata = {}
+
+        self._items_dir = dirpath / 'items'
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        return self._metadata
+
+    def __len__(self) -> int:
+        return sum(1 for _ in self._items_dir.iterdir() if _.is_dir())
+
+    def __getitem__(self, index: int) -> DatasetItem[_Kvid, _Klm, _Ktgt]:
+        item_dir = self._items_dir / str(index)
+        return DatasetItem[_Kvid, _Klm, _Ktgt].from_folder(item_dir)
+
+def dataset_from_folder(
+    dirpath: PathLike
+    ) -> FileSystemDataset[Any, Any, Any]:
+    """Create a FileSystemDataset from a directory path."""
+    return FileSystemDataset(dirpath)
+
+##################### PyTorch DataLoader Integration #####################
 
 def create_dataloader(
     dataset: (
@@ -551,7 +825,32 @@ def create_dataloader(
     prefetch_factor: int | None = None,
     persistent_workers: bool = False,
     ) -> DataLoader[DatasetItem[_Kvid, _Klm, _Ktgt]]:
-    # https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
+    """Create a PyTorch DataLoader for the given dataset.
+
+    This function wraps the dataset in a DataLoader, allowing for easy batching,
+    shuffling, and parallel data loading.
+
+    Args:
+        dataset: The dataset to load data from (Dataset or IterableDataset).
+        batch_size: Number of samples per batch to load (default: 1).
+        shuffle: Whether to shuffle the data at every epoch (default: False).
+        num_workers: Number of subprocesses to use for data loading (default: 0).
+        drop_last: Whether to drop the last incomplete batch (default: False).
+        timeout: Timeout for collecting a batch from workers (default: 0).
+        worker_init_fn: Function to initialize each worker process (default: None).
+        mp_context: Multiprocessing context to use (default: None).
+        generator: Random number generator for shuffling (default: None).
+        prefetch_factor: Number of samples loaded in advance by each worker (default: None).
+        persistent_workers: Whether to keep workers alive between epochs (default: False).
+
+    Returns:
+        DataLoader: A PyTorch DataLoader instance for the dataset.
+
+    References:
+        1. PyTorch DataLoader documentation:
+           https://docs.pytorch.org/docs/stable/data.html#torch.utils.data.DataLoader
+
+    """
 
     return DataLoader( # pyright: ignore[reportUnknownVariableType]
         dataset,

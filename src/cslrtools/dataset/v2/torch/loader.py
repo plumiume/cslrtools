@@ -7,6 +7,7 @@ from typing import (
     TypeVar, Generic, Literal
 )
 from typing_extensions import TypeIs
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
@@ -44,7 +45,14 @@ class ArrayLoader(ABC, Generic[_T, _A]):
         self.cache: dict[Path, Mapping[str | _T, _A]] = {}
         self.default_key = default_key
         self.enable_cache = enable_cache
-        self.as_tensor = as_tensor
+
+        @wraps(as_tensor)
+        def as_tensor_wrapper(data: _A) -> Tensor:
+            if not isinstance(data, Tensor):
+                data = as_tensor(data)
+            return data
+
+        self.as_tensor = as_tensor_wrapper
 
     def clear_cache(self):
         self.cache.clear()
@@ -53,13 +61,13 @@ class ArrayLoader(ABC, Generic[_T, _A]):
     def load(self, path: Path) -> _A | Mapping[str | _T, _A]:
         pass
 
-    def get_tensor(self, path: Path, key: str | _T | None = None):
+    def get_tensor(self, path: Path, key: str | _T | None = None) -> Tensor:
 
         if key is None:
             key = self.default_key
 
         if path in self.cache:
-            return self.cache[path][key]
+            return self.as_tensor(self.cache[path][key])
 
         data: _A | Mapping[str | _T, _A] = self.load(path)
 
@@ -72,11 +80,7 @@ class ArrayLoader(ABC, Generic[_T, _A]):
         if self.enable_cache:
             self.cache[path] = mapping
 
-        value = mapping[key]
-        if isinstance(value, Tensor):
-            return value
-        else:
-            return self.as_tensor(value)
+        return self.as_tensor(mapping[key])
 
 class CsvLoader(ArrayLoader[_T, Tensor]):
     """
