@@ -3,7 +3,7 @@ from typing import (
     Any, TypeVar, ParamSpec, Generic,
     cast, Mapping, TypeAlias,
     Callable, Self, Iterator,
-    
+    final,
 )
 
 from functools import wraps
@@ -26,7 +26,7 @@ from fsspec.mapping import FSMap as _FSMap
 from zarr.storage._common import Store, StorePath, Buffer
 from zarr.core.common import JSON
 
-from .loader import ArrayLoader
+from .loader import ArrayLoader, PthLoader
 
 # ルートグループ(Group)
 # metadata: メタデータグループ cslrtoolsシステム外の情報を格納、名前空間の衝突を避けるため
@@ -638,6 +638,10 @@ class CacheItemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
         self._base_dataset = base_dataset
         self._cache: dict[int, DatasetItem[_Kvid, _Klm, _Ktgt]] = {}
 
+    @property
+    def loaders(self) -> dict[str, ArrayLoader[Any, Any]]:
+        return self._base_dataset.loaders
+
     def clear_cache(self):
         """Clear the internal cache to free memory."""
         self._cache.clear()
@@ -784,6 +788,7 @@ def dataset_to_folder(
         item_dir.mkdir(parents=True, exist_ok=True)
         item.to_folder(item_dir)
 
+@final
 class FileSystemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
     """
     Dataset backed by filesystem directory structure for portability.
@@ -813,10 +818,7 @@ class FileSystemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
 
     @property
     def loaders(self) -> dict[str, ArrayLoader[Any, Any]]:
-        raise NotImplementedError(
-            'FileSystemDataset does not support loaders. '
-            'Use dataset_from_folder() for filesystem datasets with loaders.'
-        )
+        return {'.pt': PthLoader()}
 
     @property
     def metadata(self) -> Mapping[str, Any]:
@@ -828,7 +830,7 @@ class FileSystemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
     def __getitem__(self, index: int) -> DatasetItem[_Kvid, _Klm, _Ktgt]:
         item_dir = self._items_dir / str(index)
         return DatasetItem[_Kvid, _Klm, _Ktgt].from_folder(
-            item_dir, self.loaders # NameError?
+            item_dir, self.loaders
         )
 
 def dataset_from_folder(
