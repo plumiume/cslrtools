@@ -26,6 +26,7 @@ from fsspec.mapping import FSMap as _FSMap
 from zarr.storage._common import Store, StorePath, Buffer
 from zarr.core.common import JSON
 
+from .loader import ArrayLoader
 
 # ルートグループ(Group)
 # metadata: メタデータグループ cslrtoolsシステム外の情報を格納、名前空間の衝突を避けるため
@@ -385,7 +386,7 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
             )
 
     @classmethod
-    def from_folder(cls, dirpath: PathLike) -> Self:
+    def from_folder(cls, dirpath: PathLike, loaders: dict[str, ArrayLoader[Any, Any]]) -> Self:
         """
         Create a DatasetItem from a folder of files.
 
@@ -408,20 +409,20 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
             splited_name = filepath.name.split('.')
             if filepath.name.startswith('video.'):
                 kvid = cast(_Kvid, splited_name[1])
-                videos[kvid] = torch.load(filepath)
+                videos[kvid] = loaders[filepath.suffix].get_tensor(filepath)
             elif filepath.name.startswith('landmark.landmark.'):
                 klm = cast(_Klm, splited_name[2])
-                landmarks_landmarks[klm] = torch.load(filepath)
+                landmarks_landmarks[klm] = loaders[filepath.suffix].get_tensor(filepath)
             elif filepath.name.startswith('landmark.connection.'):
                 klm = cast(_Klm, splited_name[2])
-                landmarks_connections[klm] = torch.load(filepath)
+                landmarks_connections[klm] = loaders[filepath.suffix].get_tensor(filepath)
             elif filepath.name.startswith('connection.'):
                 klm1 = cast(_Klm, splited_name[1])
                 klm2 = cast(_Klm, splited_name[2])
-                connections[(klm1, klm2)] = torch.load(filepath)
+                connections[(klm1, klm2)] = loaders[filepath.suffix].get_tensor(filepath)
             elif filepath.name.startswith('target.'):
                 ktgt = cast(_Ktgt, splited_name[1])
-                targets[ktgt] = torch.load(filepath)
+                targets[ktgt] = loaders[filepath.suffix].get_tensor(filepath)
             else:
                 pass # Ignore unknown files
 
@@ -563,7 +564,21 @@ def collate_fn(
             targets=new_targets,
         )
 
-class Dataset(ABC, _Dataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
+class _DatasetMixin(ABC):
+
+    @property
+    @abstractmethod
+    def loaders(self) -> dict[str, ArrayLoader[Any, Any]]:
+        """
+        A mapping of file extensions to ArrayLoader instances for loading data.
+        
+        Returns:
+            dict: A dictionary mapping file extensions (e.g., '.mp4', '.npy') to
+                  corresponding ArrayLoader instances.
+        """
+        pass
+
+class Dataset(_DatasetMixin, ABC, _Dataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
 
     @abstractmethod
     def __len__(self) -> int:
@@ -588,7 +603,7 @@ class Dataset(ABC, _Dataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
         """
         pass
 
-class IterableDataset(ABC, _IterableDataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
+class IterableDataset(_DatasetMixin, ABC, _IterableDataset[DatasetItem[_Kvid, _Klm, _Ktgt]]):
     """
     Abstract base class for iterable-style datasets returning DatasetItem.
     Requires implementing __iter__ for sequential access without indexing.
@@ -696,6 +711,13 @@ class ZarrDataset(Dataset[_Kvid, _Klm, _Ktgt]):
         self._root = zarr.open_group(store, mode='r')
 
     @property
+    def loaders(self) -> dict[str, ArrayLoader[Any, Any]]:
+        raise NotImplementedError(
+            'ZarrDataset does not support loaders. '
+            'Use dataset_from_folder() for filesystem datasets with loaders.'
+        )
+
+    @property
     def metadata(self) -> Mapping[str, Any]:
         metadata_group = _get_group(self._root, 'metadata')
         return dict(metadata_group.attrs)
@@ -790,6 +812,13 @@ class FileSystemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
         self._items_dir = dirpath / 'items'
 
     @property
+    def loaders(self) -> dict[str, ArrayLoader[Any, Any]]:
+        raise NotImplementedError(
+            'FileSystemDataset does not support loaders. '
+            'Use dataset_from_folder() for filesystem datasets with loaders.'
+        )
+
+    @property
     def metadata(self) -> Mapping[str, Any]:
         return self._metadata
 
@@ -798,7 +827,9 @@ class FileSystemDataset(Dataset[_Kvid, _Klm, _Ktgt]):
 
     def __getitem__(self, index: int) -> DatasetItem[_Kvid, _Klm, _Ktgt]:
         item_dir = self._items_dir / str(index)
-        return DatasetItem[_Kvid, _Klm, _Ktgt].from_folder(item_dir)
+        return DatasetItem[_Kvid, _Klm, _Ktgt].from_folder(
+            item_dir, self.loaders # NameError?
+        )
 
 def dataset_from_folder(
     dirpath: PathLike
