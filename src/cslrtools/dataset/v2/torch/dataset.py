@@ -423,7 +423,7 @@ class DatasetItem(Generic[_Kvid, _Klm, _Ktgt]):
                 ktgt = cast(_Ktgt, splited_name[1])
                 targets[ktgt] = torch.load(filepath)
             else:
-                raise KeyError(f'Unknown file "{filepath.name}" in folder.')
+                pass # Ignore unknown files
 
         common_keys = landmarks_landmarks.keys() ^ landmarks_connections.keys()
 

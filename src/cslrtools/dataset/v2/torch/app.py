@@ -22,7 +22,8 @@ def main() -> int:
         )
         return 1
 
-    plugins[args.command][1](args)
+    subarg = getattr(args, args.command)
+    plugins[args.command][1](subarg)
 
     return 0
 
