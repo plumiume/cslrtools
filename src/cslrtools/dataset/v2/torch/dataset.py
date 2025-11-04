@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import (
     Any, TypeVar, ParamSpec, Generic,
-    cast, Mapping, TypeAlias,
-    Callable, Self, Iterator,
+    cast, Mapping, Iterator,
+    TypeAlias, Callable, Self,
     final,
 )
+from tqdm import tqdm
 
 from functools import wraps
 from contextlib import contextmanager
@@ -665,6 +666,8 @@ def dataset_to_zarr(
         IterableDataset[_Kvid, _Klm, _Ktgt]
     ),
     store: StoreLike,
+    use_progress: bool = False,
+    /,
     **metadata: JSON,
     ):
     """
@@ -694,6 +697,16 @@ def dataset_to_zarr(
         iterator = enumerate(dataset[i] for i in range(len(dataset)))
     else:
         iterator = enumerate(dataset)
+
+    if use_progress:
+        iterator = cast(
+            Iterator[tuple[int, DatasetItem[_Kvid, _Klm, _Ktgt]]],
+            tqdm(
+                iterator,
+                total=(len(dataset) if isinstance(dataset, Dataset) else None),
+                desc='Exporting dataset to Zarr',
+            )
+        )
 
     for idx, item in iterator:
         item_group = root.create_group(str(idx))
@@ -747,6 +760,8 @@ def dataset_to_folder(
         IterableDataset[_Kvid, _Klm, _Ktgt]
     ),
     dirpath: PathLike,
+    use_progress: bool = False,
+    /,
     **metadata: JSON,
     ):
     """
@@ -782,6 +797,16 @@ def dataset_to_folder(
         iterator = enumerate(dataset[i] for i in range(len(dataset)))
     else:
         iterator = enumerate(dataset)
+
+    if use_progress:
+        iterator = cast(
+            Iterator[tuple[int, DatasetItem[_Kvid, _Klm, _Ktgt]]],
+            tqdm(
+                iterator,
+                total=(len(dataset) if isinstance(dataset, Dataset) else None),
+                desc='Exporting dataset to folder',
+            )
+        )
 
     for idx, item in iterator:
         item_dir = items_dir / str(idx)
